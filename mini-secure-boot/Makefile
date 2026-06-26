@@ -1,0 +1,43 @@
+CC = gcc
+CFLAGS = -Wall -Wextra -O2 -I include
+LDFLAGS = -lm
+OUTDIR = bin
+
+SRCS = src/uefi_sb.c src/signature_verify.c src/trust_chain.c \
+       src/firmware_update.c src/root_of_trust.c
+OBJS = $(SRCS:src/%.c=$(OUTDIR)/%.o)
+
+EXAMPLES = $(OUTDIR)/secure_boot_demo.exe \
+           $(OUTDIR)/signature_demo.exe \
+           $(OUTDIR)/fit_verify_demo.exe
+
+.PHONY: all clean run-secure-boot run-signature run-fit-verify
+
+all: $(OUTDIR) $(EXAMPLES)
+
+$(OUTDIR):
+	mkdir -p $(OUTDIR)
+
+$(OUTDIR)/%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUTDIR)/secure_boot_demo.exe: $(OBJS) examples/secure_boot_demo.c
+	$(CC) $(CFLAGS) -o $@ examples/secure_boot_demo.c $(OBJS) $(LDFLAGS)
+
+$(OUTDIR)/signature_demo.exe: $(OBJS) examples/signature_demo.c
+	$(CC) $(CFLAGS) -o $@ examples/signature_demo.c $(OBJS) $(LDFLAGS)
+
+$(OUTDIR)/fit_verify_demo.exe: $(OBJS) examples/fit_verify_demo.c
+	$(CC) $(CFLAGS) -o $@ examples/fit_verify_demo.c $(OBJS) $(LDFLAGS)
+
+run-secure-boot: $(OUTDIR)/secure_boot_demo.exe
+	$(OUTDIR)\secure_boot_demo.exe
+
+run-signature: $(OUTDIR)/signature_demo.exe
+	$(OUTDIR)\signature_demo.exe
+
+run-fit-verify: $(OUTDIR)/fit_verify_demo.exe
+	$(OUTDIR)\fit_verify_demo.exe
+
+clean:
+	rm -rf $(OUTDIR)

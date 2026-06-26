@@ -132,17 +132,15 @@ static bool smbios_parse_structure(const uint8_t *raw_data, size_t offset, size_
     out->string_count = 0;
 
     if (strings_start[0] != 0) {
-        const uint8_t *s = strings_start;
         size_t field_idx = 0;
-        while (*s != 0 && field_idx < SMBIOS_MAX_STRINGS) {
-            size_t slen = 0;
-            while (*s != 0 && slen < SMBIOS_STRING_MAX_LEN - 1) {
-                out->strings[field_idx][slen++] = (char)*s++;
+        uint8_t str_idx = 1;
+        while (field_idx < SMBIOS_MAX_STRINGS) {
+            if (smbios_string_at(strings_start, str_idx,
+                                 out->strings[field_idx], SMBIOS_STRING_MAX_LEN) == 0) {
+                break;
             }
-            out->strings[field_idx][slen] = '\0';
-            s++;
             field_idx++;
-            if (*s == 0) break;
+            str_idx++;
         }
         out->string_count = field_idx;
     }

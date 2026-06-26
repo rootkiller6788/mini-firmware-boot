@@ -91,6 +91,7 @@ bool bootfs_read_file(BootFS *fs, const char *path, uint8_t *buffer,
 int bootfs_list_dir(BootFS *fs, const char *path, DirEntry *entries,
                     int max_entries)
 {
+    (void)path; /* path is not used in the emulated directory listing */
     if (fs == NULL || entries == NULL || max_entries <= 0) {
         return 0;
     }
@@ -146,7 +147,7 @@ bool bootfs_find_file(BootFS *fs, const char *path, DirEntry *entry)
 void bootfs_print_dir(const BootFS *fs, const char *path)
 {
     DirEntry entries[BOOTFS_MAX_DIRENTS];
-    int count = bootfs_list_dir(fs, path, entries, BOOTFS_MAX_DIRENTS);
+    int count = bootfs_list_dir((BootFS *)fs, path, entries, BOOTFS_MAX_DIRENTS);
 
     printf("=== Directory listing: %s ===\n", path);
     printf("%-24s %-12s %-12s %s\n", "Name", "Size", "Cluster", "Attrib");

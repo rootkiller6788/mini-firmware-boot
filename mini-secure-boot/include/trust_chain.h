@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "signature_verify.h"
+
+#define SHA256_HASH_SIZE_TC       32
+#define RSA_MAX_MODULUS_BYTES_TC  256
 
 #define TC_MAX_COMPONENTS        16
 #define TC_MAX_NAME_LEN          64
@@ -91,9 +95,6 @@ typedef struct {
     uint32_t        total_size;
     bool            parsed;
 } FITImage;
-
-#define SHA256_HASH_SIZE_TC       32
-#define RSA_MAX_MODULUS_BYTES_TC  256
 
 /* Boot chain */
 void trust_chain_init(BootChain *chain);

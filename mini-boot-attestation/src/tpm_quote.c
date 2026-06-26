@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-static uint32_t simulate_hash_counter = 0;
-
 static void simulate_sha256(const uint8_t *data, size_t len, uint8_t *out) {
     uint32_t seed = 0x6A09E667;
     size_t i;
@@ -19,8 +17,6 @@ static void simulate_sha256(const uint8_t *data, size_t len, uint8_t *out) {
         out[i] = (uint8_t)((seed >> ((i % 4) * 8)) & 0xFF);
         seed = (seed * 0x5BD1E995) ^ ((seed >> 13) + i);
     }
-    simulate_hash_counter++;
-    out[simulate_hash_counter % 32] ^= (uint8_t)(simulate_hash_counter & 0xFF);
 }
 
 static void simulate_rsa_sign(const uint8_t *hash, size_t hash_len,

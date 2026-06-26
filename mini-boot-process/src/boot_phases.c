@@ -147,10 +147,10 @@ bool boot_pei_phase(BootState *state)
 
     printf("[PEI] PEIM: CAR Teardown - flushing to DRAM...\n");
     uint8_t dram_buffer[CAR_SIZE];
-    CARState car_teardown;
-    car_init(&car_teardown);
-    car_enable(&car_teardown);
-    car_teardown(&car_teardown, dram_buffer);
+    CARState car_state;
+    car_init(&car_state);
+    car_enable(&car_state);
+    car_teardown(&car_state, dram_buffer);
     state->cache_as_ram_active = false;
 
     printf("[PEI] PEIM: Building memory map...\n");
@@ -173,7 +173,7 @@ bool boot_pei_phase(BootState *state)
     hob->fv_sizes[2] = 0x01000000;
 
     for (uint32_t i = 0; i < map.count && i < MAX_MEMMAP_ENTRIES; i++) {
-        hob->memory_map[i].type = map.entries[i].type;
+        hob->memory_map[i].type = (MemoryMapType)map.entries[i].type;
         hob->memory_map[i].base = map.entries[i].base;
         hob->memory_map[i].pages = map.entries[i].pages;
     }

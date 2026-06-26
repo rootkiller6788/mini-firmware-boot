@@ -118,7 +118,7 @@ void cpu_init_msrs(CPUInitState *cpu)
     cpu_add_msr(cpu, MSR_IA32_EFER, efer);
     printf("[CPU:MSR] EFER (0x%08X) = 0x%016llX [LME=%d, NXE=%d]\n",
            MSR_IA32_EFER, (unsigned long long)efer,
-           (efer >> 8) & 1, (efer >> 11) & 1);
+           (int)((efer >> 8) & 1), (int)((efer >> 11) & 1));
 
     uint64_t apic_base = 0xFEE00000ULL;
     if (cpu->enabled_features & CPU_FEATURE_X2APIC) {

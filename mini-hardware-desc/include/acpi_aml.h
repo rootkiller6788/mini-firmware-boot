@@ -111,7 +111,10 @@ typedef enum {
     AML_VAL_BUFFER_FIELD_OBJ
 } AMLValueType;
 
-typedef struct {
+/* Forward-declare for self-referencing package type */
+typedef struct AMLValue AMLValue;
+
+struct AMLValue {
     AMLValueType type;
     union {
         uint64_t integer;
@@ -121,10 +124,10 @@ typedef struct {
         } string_or_buffer;
         struct {
             size_t count;
-            struct AMLValue *elements[AML_MAX_PACKAGE_SIZE];
+            AMLValue *elements[AML_MAX_PACKAGE_SIZE];
         } package;
     };
-} AMLValue;
+};
 
 typedef struct {
     char     name[AML_MAX_NAME_LEN];

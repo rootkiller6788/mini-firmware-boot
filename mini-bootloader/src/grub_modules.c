@@ -66,6 +66,7 @@ bool grub_dependency_resolve(GRUBModuleList *list, int *order,
 bool grub_topological_sort(GRUBModuleList *list, ModuleNode *nodes,
                            int node_count, int *order, int *order_count)
 {
+    (void)nodes; /* kept for API compatibility, implementation uses list */
     bool *visited = (bool *)calloc((size_t)node_count, sizeof(bool));
     int  *result  = (int *)malloc((size_t)node_count * sizeof(int));
     int   ridx    = 0;
@@ -123,6 +124,7 @@ bool grub_topological_sort(GRUBModuleList *list, ModuleNode *nodes,
 bool grub_register_fs_driver(GRUBModuleList *list, const char *name,
                              const char *fs_type)
 {
+    (void)name; /* FS type is used for module naming */
     GRUBModuleHeader hdr;
     memset(&hdr, 0, sizeof(hdr));
     hdr.type = MODULE_TYPE_FILESYSTEM;

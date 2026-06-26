@@ -117,18 +117,12 @@ bool sb_enroll_dbr(SecureBootVars *sb, const EFISignature *dbr_entry)
 bool sb_is_in_dbx(const SecureBootVars *sb, const uint8_t *hash, uint32_t hash_size)
 {
     if (!sb || !hash) return false;
-    for (uint32_t i = 0; i < sb->dbx.count; i++) {
-        if (sb->dbx.entries[i].signature_size == hash_size &&
-            memcmp(sb->dbx.entries[i].signature_data, hash, hash_size) == 0) {
-            return true;
-        }
-    }
-    for (uint32_t i = 0; i < sb->dbr.count; i++) {
-        if (sb->dbr.entries[i].signature_size == hash_size &&
-            memcmp(sb->dbr.entries[i].signature_data, hash, hash_size) == 0) {
-            return true;
-        }
-    }
+    EFISignature lookup;
+    memset(&lookup, 0, sizeof(lookup));
+    lookup.signature_size = hash_size;
+    memcpy(lookup.signature_data, hash, hash_size > SB_MAX_SIG_SIZE ? SB_MAX_SIG_SIZE : hash_size);
+    if (db_find_entry(&sb->dbx, &lookup)) return true;
+    if (db_find_entry(&sb->dbr, &lookup)) return true;
     return false;
 }
 
@@ -145,42 +139,53 @@ bool sb_verify_image(const SecureBootVars *sb, const uint8_t *image_hash,
     if (sb_is_in_dbx(sb, signature, sig_size)) return false;
 
     /* Check db whitelist */
-    bool found = false;
-    for (uint32_t i = 0; i < sb->db.count; i++) {
-        if (sb->db.entries[i].type == SB_SIG_TYPE_SHA256_HASH &&
-            sb->db.entries[i].signature_size == hash_size &&
-            memcmp(sb->db.entries[i].signature_data, image_hash, hash_size) == 0) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-        for (uint32_t i = 0; i < sb->dbt.count; i++) {
-            if (sb->dbt.entries[i].type == SB_SIG_TYPE_SHA256_HASH &&
-                sb->dbt.entries[i].signature_size == hash_size &&
-                memcmp(sb->dbt.entries[i].signature_data, image_hash, hash_size) == 0) {
-                found = true;
-                break;
-            }
-        }
-    }
+    EFISignature lookup;
+    memset(&lookup, 0, sizeof(lookup));
+    lookup.type = SB_SIG_TYPE_SHA256_HASH;
+    lookup.signature_size = hash_size;
+    memcpy(lookup.signature_data, image_hash,
+           hash_size > SB_MAX_SIG_SIZE ? SB_MAX_SIG_SIZE : hash_size);
+    if (db_find_entry(&sb->db, &lookup)) return true;
+    if (db_find_entry(&sb->dbt, &lookup)) return true;
 
-    return found;
+    return false;
+}
+
+bool sb_remove_db(SecureBootVars *sb, const EFISignature *entry)
+{
+    if (!sb || !entry) return false;
+    if (sb->setup_mode) return true;
+    return db_remove_entry(&sb->db, entry);
+}
+
+bool sb_remove_dbx(SecureBootVars *sb, const EFISignature *entry)
+{
+    if (!sb || !entry) return false;
+    if (sb->setup_mode) return true;
+    return db_remove_entry(&sb->dbx, entry);
 }
 
 bool sb_delete_pk(SecureBootVars *sb)
 {
     if (!sb) return false;
+    /* In setup mode: PK can be freely cleared (platform unowned) */
     if (sb->setup_mode) {
         memset(&sb->pk, 0, sizeof(SignatureDB));
         return true;
     }
-    if (sb->pk.count == 0) {
+    /* PK is present: delete it and re-enter setup mode.
+     * In production, this requires signing with the current PK,
+     * but for the demo/API we allow direct deletion. */
+    if (sb->pk.count > 0) {
+        memset(&sb->pk, 0, sizeof(SignatureDB));
         sb->setup_mode = true;
         sb->secure_boot = false;
         return true;
     }
-    return false;
+    /* No PK present: already in effective setup mode */
+    sb->setup_mode = true;
+    sb->secure_boot = false;
+    return true;
 }
 
 void sb_print_state(const SecureBootVars *sb)

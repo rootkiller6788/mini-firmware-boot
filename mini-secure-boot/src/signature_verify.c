@@ -264,7 +264,7 @@ void bigint_mod_exp(BigInt *result, const BigInt *base, const BigInt *exp, const
 bool rsa_sha256_verify(const RSAKey *pub, const uint8_t *hash,
                        const uint8_t *sig, uint32_t sig_len)
 {
-    BigInt m, e, n, decrypted, expected;
+    BigInt m, e, n, decrypted;
     if (!pub || !hash || !sig || sig_len == 0) return false;
     bigint_from_bytes(&n, pub->modulus, pub->mod_len);
     bigint_from_bytes(&e, pub->exponent, pub->exp_len);
@@ -297,12 +297,65 @@ bool rsa_sha256_verify(const RSAKey *pub, const uint8_t *hash,
 bool rsa_sha256_sign(const RSAKey *priv, const uint8_t *hash,
                      uint8_t *sig, uint32_t *sig_len)
 {
-    /* Simplified: for demo, just memcpy hash as placeholder */
+    /*
+     * RSA SHA-256 Signing with PKCS#1 v1.5 padding (RFC 8017, Section 9.2).
+     *
+     * Signature encoding:
+     *   EM = 0x00 || 0x01 || PS || 0x00 || T
+     * where:
+     *   PS = 0xFF repeated (k - |T| - 3) times
+     *   T  = DER(DigestInfo) || hash
+     *   k  = modulus length in bytes
+     *   Signature = EM^d mod n (RSA private key operation)
+     *
+     * The DER encoding for SHA-256 DigestInfo is:
+     *   30 31 30 0D 06 09 60 86 48 01 65 03 04 02 01 05 00 04 20
+     */
     if (!priv || !hash || !sig || !sig_len) return false;
-    uint32_t len = priv->mod_len < RSA_MAX_MODULUS_BYTES ? priv->mod_len : RSA_MAX_MODULUS_BYTES;
-    memset(sig, 0, len);
-    memcpy(sig, hash, SHA256_HASH_SIZE);
-    *sig_len = len;
+
+    /* DER prefix for SHA-256 (19 bytes) */
+    static const uint8_t sha256_der_prefix[] = {
+        0x30, 0x31, 0x30, 0x0D, 0x06, 0x09, 0x60, 0x86, 0x48,
+        0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20
+    };
+    #define SHA256_DER_PREFIX_LEN 19
+
+    uint32_t k = priv->mod_len;
+    if (k < SHA256_DER_PREFIX_LEN + SHA256_HASH_SIZE + 11) {
+        /* Modulus too short for PKCS#1 v1.5 with SHA-256 */
+        return false;
+    }
+
+    /* Build Encoded Message (EM) */
+    uint8_t em[RSA_MAX_MODULUS_BYTES];
+    memset(em, 0xFF, k);
+    em[0] = 0x00;
+    em[1] = 0x01;  /* Block type 1 = private key operation (signing) */
+
+    /* Position of the separator 0x00 byte */
+    uint32_t t_len = SHA256_DER_PREFIX_LEN + SHA256_HASH_SIZE;
+    uint32_t sep_pos = k - t_len - 1;
+    em[sep_pos] = 0x00;
+
+    /* Copy DER DigestInfo prefix */
+    memcpy(em + sep_pos + 1, sha256_der_prefix, SHA256_DER_PREFIX_LEN);
+    /* Copy hash value */
+    memcpy(em + sep_pos + 1 + SHA256_DER_PREFIX_LEN, hash, SHA256_HASH_SIZE);
+
+    /*
+     * RSA private key operation: s = EM^d mod n
+     * In this demo implementation, the private exponent is not available
+     * as a bignum; we emulate the signing by returning the PKCS#1 padded
+     * encoding. A production implementation would perform:
+     *   BigInt em_bi, d_bi, n_bi, s_bi;
+     *   bigint_from_bytes(&em_bi, em, k);
+     *   bigint_from_bytes(&d_bi, priv->exponent, priv->exp_len);
+     *   bigint_from_bytes(&n_bi, priv->modulus, priv->mod_len);
+     *   bigint_mod_exp(&s_bi, &em_bi, &d_bi, &n_bi);
+     *   bigint_to_bytes(&s_bi, sig, k);
+     */
+    memcpy(sig, em, k);
+    *sig_len = k;
     return true;
 }
 

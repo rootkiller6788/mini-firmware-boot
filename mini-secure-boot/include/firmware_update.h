@@ -5,6 +5,14 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define RSA_MAX_MODULUS_BYTES_256  256
+typedef struct {
+    uint8_t  modulus[RSA_MAX_MODULUS_BYTES_256];
+    uint8_t  exponent[RSA_MAX_MODULUS_BYTES_256];
+    uint32_t mod_len;
+    uint32_t exp_len;
+} RSAKey_256;
+
 #define FW_CAPSULE_FLAGS_PERSIST_ACROSS_RESET   0x00010000
 #define FW_CAPSULE_FLAGS_POPULATE_SYSTEM_TABLE  0x00020000
 #define FW_CAPSULE_FLAGS_INITIATE_RESET         0x00040000
@@ -73,13 +81,5 @@ bool fw_capsule_commit(FWUpdateContext *ctx);
 bool fw_capsule_rollback(FWUpdateContext *ctx);
 uint32_t fw_capsule_get_version(const FWUpdateContext *ctx);
 const char *fw_verify_result_str(FWVerifyResult result);
-
-#define RSA_MAX_MODULUS_BYTES_256  256
-typedef struct {
-    uint8_t  modulus[RSA_MAX_MODULUS_BYTES_256];
-    uint8_t  exponent[RSA_MAX_MODULUS_BYTES_256];
-    uint32_t mod_len;
-    uint32_t exp_len;
-} RSAKey_256;
 
 #endif /* FIRMWARE_UPDATE_H */

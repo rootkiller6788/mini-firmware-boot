@@ -28,6 +28,7 @@ void stage2_init(MultibootHeader *header, MultibootInfo *info)
 bool stage2_load_kernel(MultibootInfo *info, const char *kernel_path,
                         uint32_t load_addr)
 {
+    (void)info;
     if (kernel_path == NULL) return false;
 
     FILE *f = fopen(kernel_path, "rb");
@@ -153,6 +154,7 @@ void stage2_set_cmdline(MultibootInfo *info, const char *cmdline, uint32_t addr)
 void stage2_add_module(MultibootInfo *info, MultibootModule *modules,
                        uint32_t count, uint32_t addr)
 {
+    (void)modules;
     info->mods_count = count;
     info->mods_addr  = addr;
     info->flags     |= MULTIBOOT_INFO_MODS;

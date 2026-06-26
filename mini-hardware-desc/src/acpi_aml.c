@@ -65,13 +65,13 @@ static void aml_read_name(AMLContext *ctx, char *buf, size_t buf_size)
         lead = aml_read_byte(ctx);
     }
     if (lead == 0x2E) { /* dual name */
-        for (int i = 0; i < 2 && idx + 4 < (int)buf_size; i++) {
+        for (int i = 0; i < 2 && idx + 4 < buf_size; i++) {
             for (int j = 0; j < 4; j++) buf[idx++] = aml_read_byte(ctx);
             if (i == 0) buf[idx++] = '.';
         }
     } else if (lead == 0x2F) { /* multi name */
         uint8_t count = aml_read_byte(ctx);
-        for (uint8_t i = 0; i < count && idx + 4 < (int)buf_size; i++) {
+        for (uint8_t i = 0; i < count && idx + 4 < buf_size; i++) {
             for (int j = 0; j < 4; j++) buf[idx++] = aml_read_byte(ctx);
             if (i + 1 < count) buf[idx++] = '.';
         }
@@ -182,7 +182,7 @@ static bool aml_execute_op(AMLContext *ctx, uint8_t opcode)
     AMLValue b = ctx->stack[--ctx->stack_depth];
     AMLValue a = ctx->stack[--ctx->stack_depth];
 
-    AMLScope *scope = &ctx->scopes[ctx->scope_depth];
+    (void)&ctx->scopes[ctx->scope_depth]; /* reserved for scope-local operations */
 
     if (ctx->stack_depth < AML_MAX_STACK_DEPTH) {
         AMLValue *r = &ctx->stack[ctx->stack_depth++];
@@ -238,6 +238,11 @@ bool aml_parse(AMLContext *ctx)
         case AML_ZERO_OP:
         case AML_ONE_OP:
         case AML_ONES_OP:
+        case AML_BYTE_PREFIX:
+        case AML_WORD_PREFIX:
+        case AML_DWORD_PREFIX:
+        case AML_QWORD_PREFIX:
+        case AML_STRING_PREFIX:
             ctx->pos--;
             if (ctx->stack_depth < AML_MAX_STACK_DEPTH) {
                 aml_eval_term(ctx, &ctx->stack[ctx->stack_depth++]);
@@ -279,7 +284,6 @@ bool aml_parse(AMLContext *ctx)
             ctx->pos = save_pos;
 
             if (condition) {
-                size_t limit = has_else ? else_offset : if_end;
                 aml_parse(ctx);
             } else if (has_else) {
                 ctx->pos = else_offset + 1;
@@ -288,16 +292,86 @@ bool aml_parse(AMLContext *ctx)
             break;
         }
         case AML_WHILE_OP: {
-            size_t while_start = ctx->pos;
-            /* simplified: just skip for now */
+            /* PkgLength parsing for While body (ACPI 6.5 §20.2.4) */
+            uint8_t pkg_lead = aml_read_byte(ctx);
+            size_t pkg_len = 0;
+            if (pkg_lead < 0x40) {
+                pkg_len = pkg_lead;
+            } else if (pkg_lead < 0x80) {
+                size_t shift = (size_t)(pkg_lead & 0x0F);
+                for (size_t i = 0; i < shift; i++) {
+                    pkg_len |= (size_t)aml_read_byte(ctx) << (i * 8);
+                }
+            }
+
+            size_t while_body_start = ctx->pos;
+            size_t while_end = ctx->pos + pkg_len - 1;
+
+            /* Evaluate condition and loop */
+            while (ctx->pos < while_end && !ctx->return_pending) {
+                /* Re-evaluate condition: peek at predicate bytes before body */
+                size_t cond_pos = while_body_start;
+                AMLValue cond_val;
+                ctx->pos = cond_pos;
+
+                if (aml_eval_term(ctx, &cond_val)) {
+                    bool should_continue = (cond_val.type == AML_VAL_INTEGER && cond_val.integer != 0);
+                    if (!should_continue) break;
+                } else {
+                    break;
+                }
+
+                /* Execute body (after predicate, up to end of PkgLength) */
+                while (ctx->pos < while_end && !ctx->return_pending) {
+                    uint8_t next_op = ctx->bytecode[ctx->pos];
+                    /* Check for BreakOp */
+                    if (next_op == AML_BREAK_OP) {
+                        ctx->pos++;
+                        ctx->pos = while_end;  /* exit loop */
+                        break;
+                    }
+                    if (next_op == AML_CONTINUE_OP) {
+                        ctx->pos++;
+                        break;  /* restart from condition */
+                    }
+                    aml_parse(ctx);
+                }
+            }
+            ctx->pos = while_end;
             break;
         }
+        case AML_BREAK_OP:
+            /* Handled by While loop above */
+            ctx->pos--;
+            break;
+        case AML_CONTINUE_OP:
+            /* Handled by While loop above */
+            ctx->pos--;
+            break;
         case AML_STORE_OP: {
-            AMLValue src, dest_name;
-            if (!aml_eval_term(ctx, &src)) break;
-            /* simplified store */
-            if (ctx->stack_depth < AML_MAX_STACK_DEPTH) {
-                ctx->stack[ctx->stack_depth++] = src;
+            /* StoreOp Source Destination (ACPI 6.5 §20.2.143)
+             *   Store(Source, Destination) → writes Source value into Destination
+             *   If Destination is a named object, update variable table.
+             */
+            AMLValue src_val;
+            if (aml_eval_term(ctx, &src_val)) {
+                /* Read destination name */
+                char dest_name[AML_MAX_NAME_LEN];
+                aml_read_name(ctx, dest_name, sizeof(dest_name));
+
+                /* Store to variable table */
+                AMLValue *existing = aml_find_variable(ctx, dest_name);
+                if (existing) {
+                    aml_value_copy(existing, &src_val);
+                } else if (ctx->var_count < AML_MAX_VARS) {
+                    AMLVariable *v = &ctx->variables[ctx->var_count++];
+                    strncpy(v->name, dest_name, AML_MAX_NAME_LEN - 1);
+                    v->name[AML_MAX_NAME_LEN - 1] = '\0';
+                    aml_value_copy(&v->value, &src_val);
+                    v->is_arg = false;
+                    v->is_local = false;
+                    v->index = 0;
+                }
             }
             break;
         }
@@ -325,9 +399,143 @@ bool aml_parse(AMLContext *ctx)
         case AML_LNOT_OP:
             if (ctx->stack_depth > 0) {
                 AMLValue *v = &ctx->stack[ctx->stack_depth - 1];
-                if (v->type == AML_VAL_INTEGER) v->integer = v->integer ? 0 : 1;
+                if (v->type == AML_VAL_INTEGER) v->integer = v->integer ? 0 : 0xFFFFFFFFFFFFFFFFULL;
             }
             break;
+        case AML_NAME_OP: {
+            /* NameOp NameString DataRefObject (ACPI 6.5 §20.2.94)
+             * Creates a named object in the current scope. */
+            char obj_name[AML_MAX_NAME_LEN];
+            aml_read_name(ctx, obj_name, sizeof(obj_name));
+            AMLValue val;
+            memset(&val, 0, sizeof(val));
+            if (aml_eval_term(ctx, &val)) {
+                aml_store_value(ctx, obj_name, &val);
+            }
+            break;
+        }
+        case AML_SCOPE_OP: {
+            /* ScopeOp NameString TermList (ACPI 6.5 §20.2.133)
+             * Opens a named scope; Namespace modification within. */
+            uint8_t pkg_lead = aml_read_byte(ctx);
+            size_t pkg_len = 0;
+            if (pkg_lead < 0x40) pkg_len = pkg_lead;
+            else if (pkg_lead < 0x80) {
+                size_t shift = (size_t)(pkg_lead & 0x0F);
+                for (size_t i = 0; i < shift; i++) pkg_len |= (size_t)aml_read_byte(ctx) << (i * 8);
+            }
+            char scope_name[AML_MAX_NAME_LEN];
+            aml_read_name(ctx, scope_name, sizeof(scope_name));
+            aml_scope_enter(ctx, scope_name);
+            size_t scope_end = ctx->pos + pkg_len - (pkg_lead < 0x40 ? 1 : (size_t)(pkg_lead & 0x0F) + 1) - 1;
+            while (ctx->pos < scope_end && !ctx->return_pending) {
+                aml_parse(ctx);
+            }
+            aml_scope_exit(ctx);
+            break;
+        }
+        case AML_METHOD_OP: {
+            /* MethodOp NameString MethodFlags TermList (ACPI 6.5 §20.2.90)
+             * Defines a control method. MethodFlags encodes arg count and serialization. */
+            uint8_t pkg_lead = aml_read_byte(ctx);
+            size_t pkg_len = 0;
+            if (pkg_lead < 0x40) pkg_len = pkg_lead;
+            else if (pkg_lead < 0x80) {
+                size_t shift = (size_t)(pkg_lead & 0x0F);
+                for (size_t i = 0; i < shift; i++) pkg_len |= (size_t)aml_read_byte(ctx) << (i * 8);
+            }
+            char mname[AML_MAX_NAME_LEN];
+            aml_read_name(ctx, mname, sizeof(mname));
+            uint8_t method_flags = aml_read_byte(ctx);
+            /* Method: store as callable in context */
+            if (ctx->method_count < AML_MAX_VARS) {
+                AMLMethod *m = &ctx->methods[ctx->method_count++];
+                strncpy(m->name, mname, AML_MAX_NAME_LEN - 1);
+                m->name[AML_MAX_NAME_LEN - 1] = '\0';
+                m->valid = true;
+                m->start_offset = ctx->pos;
+                m->end_offset = ctx->pos + pkg_len;  /* approximate */
+                m->arg_count = method_flags & 0x07;
+                m->needs_package = false;
+            }
+            break;
+        }
+        case AML_BUFFER_OP: {
+            /* BufferOp PkgLength BufferSize ByteList (ACPI 6.5 §20.2.21)
+             * Creates a buffer (byte array) of specified size. */
+            uint8_t pkg_lead = aml_read_byte(ctx);
+            size_t pkg_len = 0;
+            if (pkg_lead < 0x40) pkg_len = pkg_lead;
+            else if (pkg_lead < 0x80) {
+                size_t shift = (size_t)(pkg_lead & 0x0F);
+                for (size_t i = 0; i < shift; i++) pkg_len |= (size_t)aml_read_byte(ctx) << (i * 8);
+            }
+            /* BufferSize as AML term */
+            AMLValue buf_size;
+            if (!aml_eval_term(ctx, &buf_size)) break;
+            size_t byte_count = (size_t)buf_size.integer;
+            if (byte_count > sizeof(((AMLValue *)0)->string_or_buffer.data)) {
+                byte_count = sizeof(((AMLValue *)0)->string_or_buffer.data);
+            }
+            if (ctx->stack_depth < AML_MAX_STACK_DEPTH) {
+                AMLValue *buf = &ctx->stack[ctx->stack_depth++];
+                buf->type = AML_VAL_BUFFER;
+                buf->string_or_buffer.length = byte_count;
+                for (size_t i = 0; i < byte_count && ctx->pos < ctx->bytecode_size; i++) {
+                    AMLValue byte_val;
+                    if (aml_eval_term(ctx, &byte_val)) {
+                        buf->string_or_buffer.data[i] = (char)(uint8_t)byte_val.integer;
+                    }
+                }
+            }
+            break;
+        }
+        case AML_PACKAGE_OP: {
+            /* PackageOp PkgLength NumElements PackageElementList (ACPI 6.5 §20.2.108)
+             * Creates a fixed-length package of AML values. */
+            uint8_t pkg_lead = aml_read_byte(ctx);
+            (void)pkg_lead;  /* consumed for length tracking */
+            AMLValue count_val;
+            if (!aml_eval_term(ctx, &count_val)) break;
+            size_t num_elts = (size_t)count_val.integer;
+            if (num_elts > AML_MAX_PACKAGE_SIZE) num_elts = AML_MAX_PACKAGE_SIZE;
+            if (ctx->stack_depth < AML_MAX_STACK_DEPTH) {
+                AMLValue *pkg = &ctx->stack[ctx->stack_depth++];
+                pkg->type = AML_VAL_PACKAGE;
+                pkg->package.count = 0;
+                for (size_t i = 0; i < num_elts && ctx->pos < ctx->bytecode_size; i++) {
+                    AMLValue *elt = calloc(1, sizeof(AMLValue));
+                    if (elt && aml_eval_term(ctx, elt)) {
+                        pkg->package.elements[pkg->package.count++] = elt;
+                    } else {
+                        free(elt);
+                    }
+                }
+            }
+            break;
+        }
+        case AML_VAR_PACKAGE_OP: {
+            /* VarPackageOp PkgLength VarNumElements PackageElementList
+             * Variable-length package: NumElements evaluated at runtime. */
+            AMLValue count_val;
+            if (!aml_eval_term(ctx, &count_val)) break;
+            size_t num_elts = (size_t)count_val.integer;
+            if (num_elts > AML_MAX_PACKAGE_SIZE) num_elts = AML_MAX_PACKAGE_SIZE;
+            if (ctx->stack_depth < AML_MAX_STACK_DEPTH) {
+                AMLValue *pkg = &ctx->stack[ctx->stack_depth++];
+                pkg->type = AML_VAL_PACKAGE;
+                pkg->package.count = 0;
+                for (size_t i = 0; i < num_elts && ctx->pos < ctx->bytecode_size; i++) {
+                    AMLValue *elt = calloc(1, sizeof(AMLValue));
+                    if (elt && aml_eval_term(ctx, elt)) {
+                        pkg->package.elements[pkg->package.count++] = elt;
+                    } else {
+                        free(elt);
+                    }
+                }
+            }
+            break;
+        }
         case AML_TO_INTEGER_OP:
             if (ctx->stack_depth > 0) {
                 ctx->stack[ctx->stack_depth - 1].type = AML_VAL_INTEGER;
@@ -338,6 +546,62 @@ bool aml_parse(AMLContext *ctx)
                 ctx->stack[ctx->stack_depth - 1].type = AML_VAL_BUFFER;
             }
             break;
+        case AML_INCREMENT_OP:
+            if (ctx->stack_depth > 0) {
+                AMLValue *v = &ctx->stack[ctx->stack_depth - 1];
+                if (v->type == AML_VAL_INTEGER) v->integer++;
+            }
+            break;
+        case AML_DECREMENT_OP:
+            if (ctx->stack_depth > 0) {
+                AMLValue *v = &ctx->stack[ctx->stack_depth - 1];
+                if (v->type == AML_VAL_INTEGER) v->integer--;
+            }
+            break;
+        case AML_INDEX_OP: {
+            /* IndexOp Source Index Target (ACPI 6.5 §20.2.76)
+             * Access element Index of a package or buffer Source. */
+            if (ctx->stack_depth >= 2) {
+                AMLValue idx = ctx->stack[--ctx->stack_depth];
+                AMLValue *src = &ctx->stack[--ctx->stack_depth];
+                if (src->type == AML_VAL_PACKAGE && (size_t)idx.integer < src->package.count) {
+                    ctx->stack[ctx->stack_depth++] = *src->package.elements[(size_t)idx.integer];
+                } else if ((src->type == AML_VAL_BUFFER || src->type == AML_VAL_STRING) &&
+                           (uint64_t)idx.integer < src->string_or_buffer.length) {
+                    AMLValue result;
+                    result.type = AML_VAL_INTEGER;
+                    result.integer = (uint8_t)src->string_or_buffer.data[idx.integer];
+                    ctx->stack[ctx->stack_depth++] = result;
+                }
+            }
+            break;
+        }
+        case AML_CONCAT_OP: {
+            /* ConcatOp Data Data Target (ACPI 6.5 §20.2.34)
+             * Concatenate two strings/buffers/integers. */
+            if (ctx->stack_depth >= 2) {
+                AMLValue b = ctx->stack[--ctx->stack_depth];
+                AMLValue a = ctx->stack[--ctx->stack_depth];
+                AMLValue result;
+                memset(&result, 0, sizeof(result));
+                if (a.type == AML_VAL_STRING && b.type == AML_VAL_STRING) {
+                    result.type = AML_VAL_STRING;
+                    size_t alen = a.string_or_buffer.length;
+                    size_t blen = b.string_or_buffer.length;
+                    size_t total = alen + blen;
+                    if (total >= sizeof(result.string_or_buffer.data)) total = sizeof(result.string_or_buffer.data) - 1;
+                    memcpy(result.string_or_buffer.data, a.string_or_buffer.data, alen);
+                    memcpy(result.string_or_buffer.data + alen, b.string_or_buffer.data, total - alen);
+                    result.string_or_buffer.data[total] = '\0';
+                    result.string_or_buffer.length = total;
+                } else if (a.type == AML_VAL_INTEGER && b.type == AML_VAL_INTEGER) {
+                    result.type = AML_VAL_INTEGER;
+                    result.integer = a.integer + b.integer;  /* integer concat = add */
+                }
+                ctx->stack[ctx->stack_depth++] = result;
+            }
+            break;
+        }
         default:
             break;
         }
@@ -469,6 +733,7 @@ bool aml_parse_crs(AMLContext *ctx, const char *device_path, AMLDeviceResource *
 bool aml_parse_sta(AMLContext *ctx, const char *device_path, uint32_t *status)
 {
     if (!ctx || !status) return false;
+    (void)device_path; /* reserved: would evaluate named _STA object */
     *status = 0x0F; /* _STA default: present, enabled, shown, functional */
     return true;
 }

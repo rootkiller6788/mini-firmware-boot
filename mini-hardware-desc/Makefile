@@ -4,6 +4,7 @@ LDFLAGS = -lm
 OUTDIR  = bin
 SRCDIR  = src
 EXAMPLESDIR = examples
+TESTDIR = tests
 
 SRCS   = $(SRCDIR)/device_tree.c $(SRCDIR)/acpi_tables.c $(SRCDIR)/acpi_aml.c \
          $(SRCDIR)/smbios.c $(SRCDIR)/hob.c
@@ -14,9 +15,25 @@ EXAMPLES = $(OUTDIR)/fdt_parse_demo.exe \
            $(OUTDIR)/acpi_tables_demo.exe \
            $(OUTDIR)/smbios_demo.exe
 
-.PHONY: all clean run-fdt run-acpi run-smbios distclean help
+TESTS = $(OUTDIR)/test_device_tree.exe \
+        $(OUTDIR)/test_acpi.exe \
+        $(OUTDIR)/test_others.exe
+
+.PHONY: all test clean run-fdt run-acpi run-smbios distclean help
 
 all: $(OUTDIR) $(EXAMPLES)
+
+test: $(OUTDIR) $(TESTS)
+	@echo "=== Running FDT Tests ==="
+	@"$(OUTDIR)/test_device_tree.exe"
+	@echo ""
+	@echo "=== Running ACPI Tests ==="
+	@"$(OUTDIR)/test_acpi.exe"
+	@echo ""
+	@echo "=== Running SMBIOS + HOB + AML Tests ==="
+	@"$(OUTDIR)/test_others.exe"
+	@echo ""
+	@echo "=== All tests passed ==="
 
 $(OUTDIR):
 	mkdir -p "$(OUTDIR)"
@@ -29,6 +46,15 @@ $(OUTDIR)/acpi_tables_demo.exe: $(EXAMPLESDIR)/acpi_tables_demo.c $(SRCDIR)/acpi
 
 $(OUTDIR)/smbios_demo.exe: $(EXAMPLESDIR)/smbios_demo.c $(SRCDIR)/smbios.o | $(OUTDIR)
 	$(CC) $(CFLAGS) -o $@ $< $(SRCDIR)/smbios.o $(LDFLAGS)
+
+$(OUTDIR)/test_device_tree.exe: $(TESTDIR)/test_device_tree.c $(SRCDIR)/device_tree.o | $(OUTDIR)
+	$(CC) $(CFLAGS) -Wno-array-bounds -o $@ $< $(SRCDIR)/device_tree.o $(LDFLAGS)
+
+$(OUTDIR)/test_acpi.exe: $(TESTDIR)/test_acpi.c $(SRCDIR)/acpi_tables.o | $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $< $(SRCDIR)/acpi_tables.o $(LDFLAGS)
+
+$(OUTDIR)/test_others.exe: $(TESTDIR)/test_others.c $(SRCDIR)/smbios.o $(SRCDIR)/hob.o $(SRCDIR)/acpi_aml.o | $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $< $(SRCDIR)/smbios.o $(SRCDIR)/hob.o $(SRCDIR)/acpi_aml.o $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -52,6 +78,7 @@ distclean: clean
 help:
 	@echo "Usage: make [target]"
 	@echo "  all       - Build all demo programs (default)"
+	@echo "  test      - Build and run all unit tests"
 	@echo "  run-fdt   - Run FDT parse demo"
 	@echo "  run-acpi  - Run ACPI tables demo"
 	@echo "  run-smbios - Run SMBIOS demo"

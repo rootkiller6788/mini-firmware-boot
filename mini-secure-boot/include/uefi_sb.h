@@ -83,6 +83,8 @@ bool sb_verify_image(const SecureBootVars *sb, const uint8_t *image_hash,
                      uint32_t hash_size, const uint8_t *signature,
                      uint32_t sig_size);
 bool sb_is_in_dbx(const SecureBootVars *sb, const uint8_t *hash, uint32_t hash_size);
+bool sb_remove_db(SecureBootVars *sb, const EFISignature *entry);
+bool sb_remove_dbx(SecureBootVars *sb, const EFISignature *entry);
 bool sb_delete_pk(SecureBootVars *sb);
 void sb_print_state(const SecureBootVars *sb);
 

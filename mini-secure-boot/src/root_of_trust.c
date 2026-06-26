@@ -50,15 +50,6 @@ RoTVerifyResult rot_verify_first_stage(const RootOfTrust *rot,
     uint8_t ref_hash[SHA256_HASH_SIZE];
     sha256_hash(rot->public_key_hash, ROT_MAX_KEY_HASH, ref_hash);
 
-    bool sig_valid = false;
-    for (uint32_t i = 0; i < SHA256_HASH_SIZE; i++) {
-        if (signature[i] != computed_hash[i]) {
-            sig_valid = false;
-            break;
-        }
-        if (i == SHA256_HASH_SIZE - 1) sig_valid = true;
-    }
-
     /* For demo: compare hash of first stage against hard-coded ROM hash */
     uint8_t stage_hash[SHA256_HASH_SIZE];
     sha256_hash(stage_data, stage_size, stage_hash);

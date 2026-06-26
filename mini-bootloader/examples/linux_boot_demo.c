@@ -24,7 +24,8 @@ int main(void)
         unsigned char *hdr = setup_bin + HEADER_MAGIC_OFFSET;
         memcpy(hdr, LINUX_SETUP_MAGIC, 4);
 
-        SetupHeader *sh = (SetupHeader *)(setup_bin + SETUP_HEADER_OFFSET);
+        BootParams *sh = (BootParams *)(setup_bin + SETUP_HEADER_OFFSET);
+        memset(sh, 0, sizeof(BootParams));
         sh->setup_sects   = 4;
         sh->boot_flag     = LINUX_BOOT_SIGNATURE;
         sh->header        = LINUX_HEADER_MAGIC;

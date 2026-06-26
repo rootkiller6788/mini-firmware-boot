@@ -38,7 +38,8 @@ int main(void)
     hdr[3] = ((3 << 24));                /* image_count = 3 (big-endian) */
     hdr[4] = ((2 << 24));                /* config_count = 2 (big-endian) */
     hdr[5] = ((40 << 24));               /* description offset = 40 */
-    memcpy(fit_raw + 40, "Example FIT: Linux 5.15 + DTB + initramfs", 43);
+    const char desc[] = "Example FIT: Linux 5.15 + DTB + initramfs";
+    memcpy(fit_raw + 40, desc, sizeof(desc));
 
     if (!fit_parse(&fit, fit_raw, sizeof(fit_raw))) {
         printf("  FAILED to parse FIT image\n");
@@ -89,14 +90,12 @@ int main(void)
     fit.configs[0].fdt_idx = 1;
     fit.configs[0].initrd_idx = 2;
     snprintf(fit.configs[0].description, FIT_MAX_DESC_LEN, "conf-1");
-    fit.verified_bitmap = 0;
 
     /* Config 1: kernel + fdt only */
     fit.configs[1].kernel_idx = 0;
     fit.configs[1].fdt_idx = 1;
     fit.configs[1].initrd_idx = 2;
     snprintf(fit.configs[1].description, FIT_MAX_DESC_LEN, "conf-2");
-    fit.verified_bitmap = 0;
 
     /* ── 2. Print FIT components ── */
     printf(">>> Step 2: FIT Component Layout\n");
@@ -111,7 +110,7 @@ int main(void)
     /* ── 4. Sign configurations ── */
     printf(">>> Step 4: Sign Each Configuration\n");
     for (uint32_t i = 0; i < fit.header.config_count; i++) {
-        FITSubImage *kernel_img = NULL;
+        const FITSubImage *kernel_img = NULL;
         if (fit_get_subimage(&fit, fit.configs[i].kernel_idx, &kernel_img) && kernel_img) {
             memcpy(fit.configs[i].signature_data, kernel_img->hash_value,
                    SHA256_HASH_SIZE_TC);

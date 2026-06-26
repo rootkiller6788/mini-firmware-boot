@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "tpm_quote.h"
+#include "aik_identity.h"
 
 #define ATTEST_NONCE_SIZE        32
 #define ATTEST_MAX_EXTRA_DATA    64

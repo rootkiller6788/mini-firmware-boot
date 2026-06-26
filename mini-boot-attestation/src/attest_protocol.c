@@ -108,7 +108,8 @@ int32_t attest_verify(const AttestResponse *response,
 
     bool aik_ok = false;
     if (response->aik_credential_provided && verifier->accepted_aik_count > 0) {
-        TPMKeyPublic *aik_pub_ref = &verifier->accepted_aiks[0];
+        const TPMKeyPublic *aik_pub_ref = &verifier->accepted_aiks[0];
+        (void)aik_pub_ref;
 
         TPMKeyPublic response_aik_pub;
         memset(&response_aik_pub, 0, sizeof(response_aik_pub));
@@ -194,6 +195,7 @@ int32_t attest_verify_policy(const TPMPcrComposite *pcr_composite,
                               const AttestVerifier *verifier,
                               AttestPolicyResult *result) {
     if (!pcr_composite || !verifier || !result) return -1;
+    (void)firmware_version;
 
     *result = ATTEST_POLICY_UNKNOWN;
 

@@ -22,7 +22,7 @@ typedef enum {
     ROT_POLICY_LOCKED = 0,
     ROT_POLICY_UNLOCKED,
     ROT_POLICY_TAMPERED
-} BootPolicy;
+} RoTBootPolicy;
 
 typedef enum {
     ROT_VERIFY_OK = 0,
@@ -35,7 +35,7 @@ typedef enum {
 
 typedef struct {
     uint8_t  public_key_hash[ROT_MAX_KEY_HASH];
-    BootPolicy boot_policy;
+    RoTBootPolicy boot_policy;
     uint32_t anti_rollback_counter;
     uint8_t  device_secret[ROT_MAX_SECRET_SIZE];
     uint8_t  device_id[ROT_MAX_DEVICE_ID];

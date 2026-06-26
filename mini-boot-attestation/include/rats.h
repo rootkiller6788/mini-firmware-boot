@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "tpm_quote.h"
+#include "verifier_service.h"
 
 #define RATS_MAX_CLAIMS            16
 #define RATS_CLAIM_KEY_SIZE        32
@@ -91,7 +92,7 @@ typedef struct {
 
 typedef struct {
     uint8_t  rp_identity[RATS_RP_ID_SIZE];
-    uint8_t  attester_identity[RATS_DEVICE_ID_SIZE];
+    uint8_t  attester_identity[ATTEST_DEVICE_ID_SIZE];
     uint8_t  attestation_result;
     RATSTrustTier trust_tier;
     uint64_t timestamp;

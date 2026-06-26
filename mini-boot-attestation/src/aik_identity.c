@@ -78,6 +78,7 @@ static void simulate_hash(const uint8_t *data, size_t len, uint8_t *out) {
 
 static void simulate_sign(const uint8_t *data, size_t len,
                            uint8_t *sig, uint16_t *sig_size) {
+    (void)data;
     memset(sig, 0, AIK_CERT_SIZE / 2);
     simulate_rng(sig, len < (size_t)(AIK_CERT_SIZE / 2) ? len : (size_t)(AIK_CERT_SIZE / 2));
     *sig_size = AIK_CERT_SIZE / 2;
@@ -221,7 +222,6 @@ int32_t tpm_verify_aik_credential(const AIKCredential *credential,
     }
 
     if (credential->expiry_date < (uint32_t)time(NULL)) {
-        credential->active = false;
         *result = false;
         return 0;
     }

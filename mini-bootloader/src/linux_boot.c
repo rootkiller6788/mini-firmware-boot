@@ -239,7 +239,7 @@ void linux_print_boot_params(const BootParams *params)
 void linux_print_e820_map(const LinuxBootContext *ctx)
 {
     printf("\n=== E820 Memory Map ===\n");
-    printf("%-10s  %-20s  %-20s  %s\n",
+    printf("%-8s  %-20s  %-20s  %s\n",
            "Type", "Base", "Length", "Size");
 
     for (uint32_t i = 0; i < ctx->e820_count; i++) {
@@ -253,8 +253,8 @@ void linux_print_e820_map(const LinuxBootContext *ctx)
         }
 
         uint64_t size_mb = ctx->e820_map[i].length / (1024 * 1024);
-        printf("0x%08X  0x%016llX  0x%016llX  %llu MB\n",
-               ctx->e820_map[i].type,
+        printf("%-8s  0x%016llX  0x%016llX  %llu MB\n",
+               type_name,
                (unsigned long long)ctx->e820_map[i].base,
                (unsigned long long)ctx->e820_map[i].length,
                (unsigned long long)size_mb);
